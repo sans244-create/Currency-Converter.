@@ -1,115 +1,148 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import requests
 import json
-import datetime
+import os
 
-API_URL = "https://api.exchangerate-api.com/v4/latest/{}"
-history_file = "history.json"
+FILE_NAME = "books.json"
 
-def load_history():
-    try:
-        with open(history_file, "r") as f:
+def load_books():
+    if os.path.exists(FILE_NAME):
+        with open(FILE_NAME, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except FileNotFoundError:
-        return []
+    return []
 
-def save_history(entry):
-    history = load_history()
-    history.append(entry)
-    with open(history_file, "w") as f:
-        json.dump(history, f, ensure_ascii=False, indent=4)
+def save_books(books):
+    with open(FILE_NAME, 'w', encoding='utf-8') as f:
+        json.dump(books, f, ensure_ascii=False, indent=4)
 
-def get_exchange_rate(from_currency, to_currency):
-    try:
-        response = requests.get(API_URL.format(from_currency))
-        response.raise_for_status()
-        data = response.json()
-        if 'rates' not in data or to_currency not in data['rates']:
-            messagebox.showerror("Ошибка", "Курс не найден для выбранных валют.")
-            return None
-        return data['rates'][to_currency]
-    except requests.exceptions.RequestException as e:
-        messagebox.showerror("Ошибка сети", f"Ошибка при получении курса: {e}")
-        return None
+def add_book():
+    title = entry_title.get().strip()
+    author = entry_author.get().strip()
+    genre = entry_genre.get().strip()
+    pages_str = entry_pages.get().strip()
 
-def convert():
-    from_curr = currency_from.get()
-    to_curr = currency_to.get()
-
-    if from_curr == to_curr:
-        messagebox.showerror("Ошибка", "Выберите разные валюты для конвертации.")
+    # Валидация
+    if not title or not author or not genre or not pages_str:
+        messagebox.showerror("Ошибка", "Все поля должны быть заполнены.")
         return
-
-    amount_str = entry_amount.get()
     try:
-        amount = float(amount_str)
-        if amount <= 0:
+        pages = int(pages_str)
+        if pages <= 0:
             raise ValueError
     except ValueError:
-        messagebox.showerror("Некорректный ввод", "Пожалуйста, введите положительное число.")
+        messagebox.showerror("Ошибка", "Количество страниц должно быть числом больше 0.")
         return
 
-    rate = get_exchange_rate(from_curr, to_curr)
-    if rate is None:
-        return
-
-    result = amount * rate
-    label_result.config(text=f"{amount:.2f} {from_curr} = {result:.2f} {to_curr}")
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    entry = {
-        "timestamp": timestamp,
-        "from": from_curr,
-        "to": to_curr,
-        "amount": amount,
-        "result": result
+    book = {
+        "название": title,
+        "автор": author,
+        "жанр": genre,
+        "страниц": pages
     }
-    save_history(entry)
-    update_history_table()
 
-def update_history_table():
+    books = load_books()
+    books.append(book)
+    save_books(books)
+    update_books_table()
+    clear_inputs()
+
+def clear_inputs():
+    entry_title.delete(0, tk.END)
+    entry_author.delete(0, tk.END)
+    entry_genre.delete(0, tk.END)
+    entry_pages.delete(0, tk.END)
+
+def update_books_table():
     for row in tree.get_children():
         tree.delete(row)
-    for entry in load_history():
-        tree.insert("", "end", values=(
-            entry["timestamp"],
-            entry["from"],
-            entry["to"],
-            f"{entry['amount']:.2f}",
-            f"{entry['result']:.2f}"
+    for book in load_books():
+        tree.insert("", tk.END, values=(
+            book["название"],
+            book["автор"],
+            book["жанр"],
+            book["страниц"]
         ))
 
+def filter_by_genre():
+    genre_filter = entry_filter_genre.get().strip()
+    books = load_books()
+    filtered = [b for b in books if b["жанр"].lower() == genre_filter.lower()]
+    display_books(filtered)
+
+def filter_by_pages():
+    try:
+        pages_threshold = int(entry_filter_pages.get().strip())
+    except ValueError:
+        messagebox.showerror("Ошибка", "Введите корректное число для фильтра по страницам.")
+        return
+    books = load_books()
+    filtered = [b for b in books if b["страниц"] > pages_threshold]
+    display_books(filtered)
+
+def display_books(books):
+    for row in tree.get_children():
+        tree.delete(row)
+    for book in books:
+        tree.insert("", tk.END, values=(
+            book["название"],
+            book["автор"],
+            book["жанр"],
+            book["страниц"]
+        ))
+
+def reset_filters():
+    update_books_table()
+
+# Создаем окно
 root = tk.Tk()
-root.title("Currency Converter")
+root.title("Библиотека")
 
-currencies = ["USD", "EUR", "RUB", "GBP", "JPY"]
-currency_from = ttk.Combobox(root, values=currencies, state="readonly")
-currency_from.set("USD")
-currency_to = ttk.Combobox(root, values=currencies, state="readonly")
-currency_to.set("EUR")
+# Поля для добавления книги
+tk.Label(root, text="Название книги:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+entry_title = tk.Entry(root)
+entry_title.grid(row=0, column=1, padx=5, pady=5)
 
-# Расположение элементов
-tk.Label(root, text="Из валюты:").grid(row=0, column=0, padx=5, pady=5)
-currency_from.grid(row=0, column=1, padx=5, pady=5)
-tk.Label(root, text="В валюту:").grid(row=0, column=2, padx=5, pady=5)
-currency_to.grid(row=0, column=3, padx=5, pady=5)
+tk.Label(root, text="Автор:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+entry_author = tk.Entry(root)
+entry_author.grid(row=1, column=1, padx=5, pady=5)
 
-tk.Label(root, text="Сумма:").grid(row=1, column=0, padx=5, pady=5)
-entry_amount = tk.Entry(root)
-entry_amount.grid(row=1, column=1, padx=5, pady=5)
+tk.Label(root, text="Жанр:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+entry_genre = tk.Entry(root)
+entry_genre.grid(row=2, column=1, padx=5, pady=5)
 
-btn_convert = tk.Button(root, text="Конвертация", command=convert)
-btn_convert.grid(row=1, column=2, columnspan=2, padx=5, pady=5)
+tk.Label(root, text="Количество страниц:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+entry_pages = tk.Entry(root)
+entry_pages.grid(row=3, column=1, padx=5, pady=5)
 
-label_result = tk.Label(root, text="Результат появится тут")
-label_result.grid(row=2, column=0, columnspan=4, padx=5, pady=5)
+btn_add = tk.Button(root, text="Добавить книгу", command=add_book)
+btn_add.grid(row=4, column=0, columnspan=2, padx=5, pady=10)
 
-columns = ("timestamp", "from", "to", "amount", "result")
+# Таблица для отображения книг
+columns = ("название", "автор", "жанр", "страниц")
 tree = ttk.Treeview(root, columns=columns, show="headings")
 for col in columns:
     tree.heading(col, text=col.capitalize())
-tree.grid(row=3, column=0, columnspan=4, padx=5, pady=5)
+tree.grid(row=5, column=0, columnspan=4, padx=5, pady=5, sticky="nsew")
 
-update_history_table()
+# Настройка растяжения таблицы
+root.grid_rowconfigure(5, weight=1)
+root.grid_columnconfigure(1, weight=1)
+
+# Фильтры
+tk.Label(root, text="Фильтр по жанру:").grid(row=6, column=0, padx=5, pady=5, sticky="e")
+entry_filter_genre = tk.Entry(root)
+entry_filter_genre.grid(row=6, column=1, padx=5, pady=5)
+
+tk.Button(root, text="Фильтр по жанру", command=filter_by_genre).grid(row=6, column=2, padx=5, pady=5)
+
+tk.Label(root, text="Фильтр по страницам (>):").grid(row=7, column=0, padx=5, pady=5, sticky="e")
+entry_filter_pages = tk.Entry(root)
+entry_filter_pages.grid(row=7, column=1, padx=5, pady=5)
+tk.Button(root, text="Применить фильтр", command=filter_by_pages).grid(row=7, column=2, padx=5, pady=5)
+
+tk.Button(root, text="Сбросить фильтры", command=reset_filters).grid(row=8, column=1, padx=5, pady=10)
+
+# Инициализация таблицы
+update_books_table()
 
 root.mainloop()
