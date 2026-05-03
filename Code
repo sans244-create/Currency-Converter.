@@ -1,32 +1,46 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import request
+import requests
 import json
 import datetime
+
+API_URL = "https://api.exchangerate-api.com/v4/latest/{}"
 history_file = "history.json"
+
 def load_history():
     try:
         with open(history_file, "r") as f:
             return json.load(f)
     except FileNotFoundError:
         return []
+
 def save_history(entry):
     history = load_history()
     history.append(entry)
     with open(history_file, "w") as f:
         json.dump(history, f, ensure_ascii=False, indent=4)
+
 def get_exchange_rate(from_currency, to_currency):
     try:
         response = requests.get(API_URL.format(from_currency))
+        response.raise_for_status()
         data = response.json()
-        rate = data['rates'][to_currency]
-        return rate
-    except Exception as e:
-        messagebox.showerror("Ошибка", f"Ошибка при получении курса: {e}")
+        if 'rates' not in data or to_currency not in data['rates']:
+            messagebox.showerror("Ошибка", "Курс не найден для выбранных валют.")
+            return None
+        return data['rates'][to_currency]
+    except requests.exceptions.RequestException as e:
+        messagebox.showerror("Ошибка сети", f"Ошибка при получении курса: {e}")
         return None
+
 def convert():
     from_curr = currency_from.get()
     to_curr = currency_to.get()
+
+    if from_curr == to_curr:
+        messagebox.showerror("Ошибка", "Выберите разные валюты для конвертации.")
+        return
+
     amount_str = entry_amount.get()
     try:
         amount = float(amount_str)
@@ -35,9 +49,11 @@ def convert():
     except ValueError:
         messagebox.showerror("Некорректный ввод", "Пожалуйста, введите положительное число.")
         return
+
     rate = get_exchange_rate(from_curr, to_curr)
     if rate is None:
         return
+
     result = amount * rate
     label_result.config(text=f"{amount:.2f} {from_curr} = {result:.2f} {to_curr}")
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -50,6 +66,7 @@ def convert():
     }
     save_history(entry)
     update_history_table()
+
 def update_history_table():
     for row in tree.get_children():
         tree.delete(row)
@@ -61,29 +78,38 @@ def update_history_table():
             f"{entry['amount']:.2f}",
             f"{entry['result']:.2f}"
         ))
+
 root = tk.Tk()
 root.title("Currency Converter")
+
 currencies = ["USD", "EUR", "RUB", "GBP", "JPY"]
 currency_from = ttk.Combobox(root, values=currencies, state="readonly")
 currency_from.set("USD")
 currency_to = ttk.Combobox(root, values=currencies, state="readonly")
 currency_to.set("EUR")
+
+# Расположение элементов
 tk.Label(root, text="Из валюты:").grid(row=0, column=0, padx=5, pady=5)
 currency_from.grid(row=0, column=1, padx=5, pady=5)
 tk.Label(root, text="В валюту:").grid(row=0, column=2, padx=5, pady=5)
 currency_to.grid(row=0, column=3, padx=5, pady=5)
+
 tk.Label(root, text="Сумма:").grid(row=1, column=0, padx=5, pady=5)
 entry_amount = tk.Entry(root)
 entry_amount.grid(row=1, column=1, padx=5, pady=5)
+
 btn_convert = tk.Button(root, text="Конвертация", command=convert)
 btn_convert.grid(row=1, column=2, columnspan=2, padx=5, pady=5)
+
 label_result = tk.Label(root, text="Результат появится тут")
 label_result.grid(row=2, column=0, columnspan=4, padx=5, pady=5)
+
 columns = ("timestamp", "from", "to", "amount", "result")
 tree = ttk.Treeview(root, columns=columns, show="headings")
 for col in columns:
     tree.heading(col, text=col.capitalize())
 tree.grid(row=3, column=0, columnspan=4, padx=5, pady=5)
+
 update_history_table()
 
 root.mainloop()
